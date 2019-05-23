@@ -29,8 +29,7 @@
     
     Begin {
         $ErrorActionPreference = 'Stop'
-    }
-    
+    }  
     Process {
         Try {
             ForEach ($Comp in $ComputerName){
@@ -115,7 +114,6 @@ Function Get-UserSecurityLog {
 
     $Date = (Get-Date).AddDays(-($Days))
     }
-
     Process {
         ForEach ($Computer in $ComputerName) {
             $Logon = Get-WinEvent -FilterHashtable @{logname='security';id=4624;data=$UserName} -ComputerName $Computer -Credential $Cred -ErrorAction SilentlyContinue |
@@ -194,8 +192,7 @@ Function Reset-NetworkAdapter {
     Begin {
         $IPType = 'IPv4' 
         Write-Verbose 'Checking computer name...'
-    }
-      
+    }   
     Process { 
         ForEach ($Lab in $LabName) { 
         If ($env:COMPUTERNAME -like "$Lab*") { 
@@ -411,7 +408,6 @@ We have fixed these errors so that your home folder and files should be accessib
 '@
                }
     }
-
     Process {
         Write-Output `n
 
@@ -524,7 +520,6 @@ We have fixed these errors so that your home folder and files should be accessib
             }
         }   
     }
-
     End {
         $UserTable.Columns['LAST_UPDATE'].ColumnName = 'LAST_UPDATE(CORE)'
 
@@ -593,14 +588,11 @@ Function Reset-TUDUser {
     Begin {
 
     }
-   
-
     Process {
         If ($PSCmdlet.ShouldProcess("Target", "Operation")){
         }
         "ID is $ID"
     }
-
     End {
     
     }
@@ -633,12 +625,10 @@ Function Get-DBResult {
         # Fill() method will “open” and “close” the database connection as part of its normal operation
         $Da.Fill($DataTable) | Out-Null    
     }
-
     Catch {
         Write-Error ("Can't open connection: {0}`n{1}" -f `
         $Conn.ConnectionString, $_.Exception.ToString())
     }
-
     Finally {
         # Cleanup
         If ($Conn.State -eq 'Open') { 
@@ -660,6 +650,16 @@ Function Set-ODPNetManagedDriver {
     # Load the ODP.NET assembly into Powershell 
     Add-Type -Path “C:\ODP_NET_Managed121012\odp.net\managed\common\Oracle.ManagedDataAccess.dll"
 } # END: Function Set-ODPNetManagedDriver
+
+
+Function Import-Credential {
+
+} # END: Function Import-Credential
+
+
+Function Export-Credential {
+
+} # END: Function Export-Credential
 
 
 Export-ModuleMember -Function Get-LoggedOnUser, Get-TUDUser, Get-UserSecurityLog, Reset-NetworkAdapter, Reset-TUDUser, Export-Credential
