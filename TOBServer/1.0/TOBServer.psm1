@@ -647,8 +647,22 @@ Param()
 
 
 Function Set-ODPNetManagedDriver {
+    If (!(Test-Path -Path "$env:ProgramFiles\PackageManagement\NuGet\Packages\Oracle.ManagedDataAccess*")) {
+        If ($Null -eq (Get-PackageProvider -Name NuGet)) { 
+            Install-PackageProvider -Name NuGet -WhatIf | Out-Null 
+        }
+    
+        If ($Null -eq (Get-PackageSource -Name NuGet -ErrorAction SilentlyContinue)) { 
+            Register-PackageSource -Name NuGet -ProviderName NuGet -Location 'https://www.nuget.org/api/v2/'
+        }
+    
+        If ($Null -eq (Get-Package -Name Oracle.ManagedDataAccess -ErrorAction SilentlyContinue)) {
+            Find-Package -Name Oracle.ManagedDataAccess -ProviderName NuGet | Install-Package -Scope AllUsers -Force
+        }
+    }  
+
     # Load the ODP.NET assembly into Powershell 
-    Add-Type -Path “C:\ODP_NET_Managed121012\odp.net\managed\common\Oracle.ManagedDataAccess.dll"
+        Add-Type -Path "$env:ProgramFiles\PackageManagement\NuGet\Packages\Oracle.ManagedDataAccess.$($(Get-Package -Name Oracle.ManagedDataAccess).Version)\lib\net40\Oracle.ManagedDataAccess.dll"   
 } # END: Function Set-ODPNetManagedDriver
 
 
