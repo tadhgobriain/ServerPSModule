@@ -1,7 +1,4 @@
-﻿
-
-Function Get-UserSecurityLog {
-
+﻿Function Get-UserSecurityLog {
 # https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventID=4624
 # https://docs.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4624
 # https://stackoverflow.com/questions/50046370/extracting-from-the-message-in-powershell
