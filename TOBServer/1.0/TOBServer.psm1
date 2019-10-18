@@ -54,118 +54,6 @@
 } # END: Function Get-LoggedOnUser
 
 
-Function Get-UserSecurityLog {
-    # https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventID=4624
-    # https://docs.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4624
-    # https://stackoverflow.com/questions/50046370/extracting-from-the-message-in-powershell
-    # http://duffney.io/AddCredentialsToPowerShellFunctions
-    # 
-
-    <#
-    .Synopsis
-        Retrieves security logs from a client PC relating to user logon/logoff events.
-    .DESCRIPTION
-        Long description
-    .EXAMPLE
-        Example of how to use this cmdlet
-    .EXAMPLE
-        Another example of how to use this cmdlet
-    #>
-
-    [CmdletBinding()]
-    [Alias()]
-    [OutputType([int])]
-
-    Param (
-        # Param1 help description
-        [Parameter(Mandatory=$False,
-            ValueFromPipeline=$True)]
-        [String[]]$ComputerName = $env:COMPUTERNAME,
-
-        # Username help
-        [Parameter(Mandatory=$False)]
-        [String]$Username = '',
-
-        # Days to look back must be between 1 and 30
-        [Parameter(Mandatory=$False)]
-        [ValidateRange(1,30)]
-        [Byte]$Days = 1,
-
-        # 
-        [Parameter(Mandatory=$False)]
-        [System.Management.Automation.PSCredential]
-        [System.Management.Automation.Credential()]
-        $Credential = [System.Management.Automation.PSCredential]::Empty 
-    )
-                                                                       
-    Begin {
-        #Set the column width of the terminal window on the computer this script is run on (for Start-Transcript output)
-        If( $Host -and $Host.UI -and $Host.UI.RawUI ) {
-            $RawUI = $Host.UI.RawUI
-            $OldSize = $RawUI.BufferSize
-            $TypeName = $OldSize.GetType( ).FullName
-            $NewSize = New-Object $TypeName (500, $OldSize.Height)
-            $RawUI.BufferSize = $NewSize
-        }
-
-    $Password = ConvertTo-SecureString “qazX989%” -AsPlainText -Force
-
-    $Cred = New-Object System.Management.Automation.PSCredential (“lab150-lect\administrator”, $password)
-
-    $Date = (Get-Date).AddDays(-($Days))
-    }
-    Process {
-        ForEach ($Computer in $ComputerName) {
-            $Logon = Get-WinEvent -FilterHashtable @{logname='security';id=4624;data=$UserName} -ComputerName $Computer -Credential $Cred -ErrorAction SilentlyContinue |
-                Where-Object { ($_.Properties[4].Value -like 'S-1-5-21-*') -and ((2,3,7,10,11) -contains $_.Properties[8].Value) -and ($_.TimeCreated -gt $Date) }  |
-                Select-Object -Property TimeCreated,
-                    @{label='UserName';expression={$_.properties[5].value}},
-                    @{label='LogonType';expression={$_.properties[8].value}},
-                    @{label='LogonProcessName';expression={$_.properties[9].value}},
-                    @{label='AuthenticationPackage';expression={$_.properties[10].value}},
-                    @{label='LogonID';expression={$_.properties[7].value}},
-                    @{label='Linked LogonID';expression={$_.properties[25].value}},
-                    @{label='ComputerName';expression={$_.properties[11].value}},
-                    @{label='Domain';expression={($_.properties[6].value).split('.')[0]}},
-                    @{label='Source IP';expression={$_.properties[18].value}},
-                    @{label='Event';expression={"Logon"}}
-        
-                    
-            $AccountLogoff = Get-WinEvent -FilterHashtable @{logname='security';id=4634} -ComputerName $Computer -Credential $Cred -ErrorAction SilentlyContinue |       
-                Where-Object { ($_.Properties[0].Value -like 'S-1-5-21-*') -and ($_.TimeCreated -gt $Date) } |
-                Select-Object -Property TimeCreated,
-                    @{label='UserName';expression={$_.properties[1].value}},
-                    @{label='LogonType';expression={$_.properties[4].value}},
-                    @{label='LogonID';expression={$_.properties[3].value}},
-                    @{label='Domain';expression={$_.properties[2].value}},
-                    @{label='Event';expression={"AccountLogoff"}}
-        
-        
-            $UserInitiatedLogoff = Get-WinEvent -FilterHashtable @{logname='security';id=4647} -ComputerName $Computer -Credential $Cred -ErrorAction SilentlyContinue |
-                Where-Object { ($_.Properties[0].Value -like 'S-1-5-21-*') -and ($_.TimeCreated -gt $Date) } |
-                Select-Object -Property TimeCreated,
-                    @{label='UserName';expression={$_.properties[1].value}},
-                    @{label='LogonID';expression={$_.properties[3].value}},
-                    @{label='Domain';expression={$_.properties[2].value}},
-                    @{label='Event';expression={"UserInitiatedLogoff"}}
-        }
-    }
-    End {
-        $Logs = $Logon + $AccountLogoff + $UserInitiatedLogoff
-
-        $Logs| ForEach-Object {
-            If ($_.LogonType -eq '2') { $_.LogonType = 'Interactive' }
-            ElseIf ($_.LogonType -eq '3') { $_.LogonType = 'Network' }
-            ElseIf ($_.LogonType -eq '7')  { $_.LogonType = 'Unlock' }
-            ElseIf ($_.LogonType -eq '10')  { $_.LogonType = 'RemoteInteractive' }
-            ElseIf ($_.LogonType -eq '11')  { $_.LogonType = 'CachedInteractive' }
-        }
-        
-        $Logs
-    }
-} # END: Function Get-UserSecurityLog
-
-
 Function Reset-NetworkAdapter {
     <#
     .Synopsis
@@ -252,9 +140,9 @@ Function Get-TUDUser {
     .Synopsis
     Short description
     .DESCRIPTION
-    Long description
+    ToDo: Need to have $Identity as an output to pipe into Reset-ITTUser
     .EXAMPLE
-    Get-ITTUser -Identity
+    Get-TUDUser -Identity
     .EXAMPLE
     Another example of how to use this cmdlet
     .INPUTS
@@ -289,16 +177,12 @@ Function Get-TUDUser {
     )
 
     Begin {
-        Write-Output 'ToDo: Need to have $Identity as an output to pipe into Reset-ITTUser.'
-
         Set-ODPNetManagedDriver
 
         $SearchDCs = @('compdc1.computing.stu.it-tallaght.ie','studc1.stu.it-tallaght.ie','engdc1.eng.stu.it-tallaght.ie')
 
         $TextInfo = (Get-Culture).TextInfo
 
-        $Company = 'Tallaght'
-        $Office = 'Tallaght'
         $ExtensionAttribute15 = 'TUDublin'
         
         $COREconnString = "User id=itt_viewer;Password=""hug67*="" ;Connection Timeout=60;Data Source=(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=193.1.122.12)(PORT=1521)))(CONNECT_DATA=(SERVICE_NAME=core22)))"
@@ -312,7 +196,9 @@ Function Get-TUDUser {
         $UserTable.Columns.Add((New-Object System.Data.DataColumn 'ADAccount',([String])))
         $UserTable.Columns.Add((New-Object System.Data.DataColumn 'LastLogonDate',([String])))
         $UserTable.Columns.Add((New-Object System.Data.DataColumn 'PasswordExpired',([String])))
-        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Office365 Valid Setup',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Office365 Parameters',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Office365 Licence',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Office365 GUID',([String])))
         $UserTable.Columns.Add((New-Object System.Data.DataColumn 'EmailAddress',([String])))
         $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DataRetentionPolicy',([String])))
 
@@ -396,80 +282,97 @@ No AD user accounts are created for part-time students who are 'EL' registered.
 "@
                 
             Get-DBResult  $COREconnString $COREsqlString $UserTable
-                
-            $RegUser = $UserTable.Rows | Where-Object ID -Like $ID
-            If ($RegUser) { 
-                # Search all student domains till we find the AD user account
-                $DC = 0
-                Do {
-                    $ADUser = Get-ADUser -Filter "SamAccountName -Like '$ID'" -Properties Company,Office,EmailAddress,ExtensionAttribute2,ExtensionAttribute15,ProxyAddresses,LastLogonDate,PasswordExpired -Server $SearchDCs[$DC]
-                    $DC = $DC + 1
-                } While ($Null -eq $ADUser)
-
-                If ( $Null -eq $ADuser ) { 'User account not created yet'}
-                ElseIf ($ADUser) {                       
-                    $RegUser.Domain = $SearchDCs[$DC-1].Split('.')[1]
-                    $RegUser.ADAccount = $ADUser.SamAccountName
-                    $RegUser.LastLogonDate = $ADUser.LastLogonDate
-                    $RegUser.PasswordExpired = $ADUser.PasswordExpired
-
-                    $CorrectProxyAddresses = @("SMTP:$($ADUser.EmailAddress)", "smtp:$($ADUser.SamAccountName)@myTUDublin.mail.onmicrosoft.com","sip:$($ADUser.EmailAddress)")
-                    $ProxyTest1 = ($ADUser.ProxyAddresses -contains $CorrectProxyAddresses[0]) -and ($ADUser.ProxyAddresses -contains $CorrectProxyAddresses[1]) -and ($ADUser.ProxyAddresses -contains $CorrectProxyAddresses[2])
-                    $ProxyTest2 = (($ADUser.ProxyAddresses).Count -eq 4) -and ($ADUser.ProxyAddresses -like 'x500*')
-                    $Office365Test = ($ADUser.EmailAddress -eq "$($ADUser.SamAccountName)@mytudublin.ie") -and ($ADUser.ExtensionAttribute15 -eq $ExtensionAttribute15) -and $ProxyTest1 -and $ProxyTest2
-                    $RegUser.'Office365 Valid Setup' = $Office365Test
-
-                    $RegUser.EmailAddress = $ADUser.EmailAddress
-                    
-                    If ($Null -eq $ADUser.extensionAttribute2){
-                        $RegUser.DataRetentionPolicy = 'N/A'
-                    }
-                    ElseIf ($ADUser.extensionAttribute2){
-                        $RegUser.DataRetentionPolicy = $ADUser.extensionAttribute2 
-                    }        
-    #region ComputingDB Account 
-                    #If Computing, check their DB account
-                    If ($RegUser.Domain -eq 'computing'){
-                        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DBAccount',([String])))
-                        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DBAccount_Status',([String])))
-                        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DBAccount_DefaultPwd',([String])))
-
-                        $CompDBUserTable = New-Object System.Data.DataTable 'CompDB Results'
-                        
-                        Get-DBResult  $CompDBconnString $CompDBsqlString $CompDBUserTable
-
-                        If ($CompDBUserTable.Username) { 
-                            $RegUser.DBAccount = $CompDBUserTable.Username
-                            $RegUser.DBAccount_Status = $CompDBUserTable.Account_Status
-                            $RegUser.DBAccount_DefaultPwd = "db$($Reguser.Password)"
-    
-                            $CompDBUserTable.Clear()
-                        }
-    
-                        Else { $CompDBUserTable
-                            $RegUser.DBAccount = 'No account setup as yet'
-                            $RegUser.DBAccount_Status = 'N/A'
-                            $RegUser.DBAccount_DefaultPwd = 'N/A'
-                        }
-                    }               
-    #endregion                              
-                }                                            
+             
+            $RegUser = $UserTable.Rows | Where-Object ID -Like $Id
+            If ($RegUser) {
+                $TUDUser = $RegUser
             }
             Else { 
-                "$ID : Not registered"
-                $Action = $Action + $ActionType.Get_Item('NotRegistered')
+                $UnRegUser = $UserTable.NewRow()
+                $TUDUser = $UnRegUser }
+
+            # Search all student domains till we find the AD user account (assume no duplicates!)
+            $DC = 0
+            Do {
+                $ADUser = Get-ADUser -Filter "SamAccountName -Like '$ID'" -Properties Company,Office,EmailAddress,ExtensionAttribute2,ExtensionAttribute15,ProxyAddresses,LastLogonDate,PasswordExpired,MemberOf,mS-DS-ConsistencyGuid -Server $SearchDCs[$DC]
+                $DC = $DC + 1
+            } While ($Null -eq $ADUser)
+
+            If ( $Null -eq $ADuser ) { 'User account not created yet'}
+            ElseIf ($ADUser) {                       
+                $TUDUser.Domain = $SearchDCs[$DC-1].Split('.')[1]
+                $TUDUser.ADAccount = $ADUser.SamAccountName
+                $TUDUser.LastLogonDate = $ADUser.LastLogonDate
+                $TUDUser.PasswordExpired = $ADUser.PasswordExpired
+
+                $CorrectProxyAddresses = @("SMTP:$($ADUser.EmailAddress)", "smtp:$($ADUser.SamAccountName)@myTUDublin.mail.onmicrosoft.com","sip:$($ADUser.EmailAddress)")
+                $ProxyTest1 = ($ADUser.ProxyAddresses -contains $CorrectProxyAddresses[0]) -and ($ADUser.ProxyAddresses -contains $CorrectProxyAddresses[1]) -and ($ADUser.ProxyAddresses -contains $CorrectProxyAddresses[2])
+                $ProxyTest2 = (($ADUser.ProxyAddresses).Count -eq 4) -and ($ADUser.ProxyAddresses -like 'x500*')
+                
+                $Office365Test = ($ADUser.EmailAddress -eq "$($ADUser.SamAccountName)@mytudublin.ie") -and ($ADUser.ExtensionAttribute15 -eq $ExtensionAttribute15) -and $ProxyTest1 -and $ProxyTest2
+                $TUDUser.'Office365 Parameters' = $Office365Test
+
+                $Office365Licence = $ADUser.MemberOf | Where-Object {($_ -like '*A3*') -or ($_ -like '*A1*')}
+                If ($Office365Licence -like '*A3*') { $Office365Licence = 'A3'}
+                ElseIf ($Office365Licence -like '*A1*') { $Office365Licence = 'A1'}
+                Else {$Office365Licence = 'No'}
+                $TUDUser.'Office365 Licence' = $Office365Licence
+
+                If ($Null -ne ($ADUser.'mS-DS-ConsistencyGuid')) { $TUDUser.'Office365 GUID' = 'True' } 
+                Else {$TUDUser.'Office365 GUID' = 'False'}
+
+                $TUDUser.EmailAddress = $ADUser.EmailAddress
+                
+                If ($Null -eq $ADUser.extensionAttribute2){
+                    $TUDUser.DataRetentionPolicy = 'N/A'
+                }
+                ElseIf ($ADUser.extensionAttribute2){
+                    $TUDUser.DataRetentionPolicy = $ADUser.extensionAttribute2 
+                }        
+    #region ComputingDB Account 
+                #If Computing, check their DB account
+                If ($TUDUser.Domain -eq 'computing'){
+                    $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DBAccount',([String])))
+                    $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DBAccount_Status',([String])))
+                    $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DBAccount_DefaultPwd',([String])))
+
+                    $CompDBUserTable = New-Object System.Data.DataTable 'CompDB Results'
+                    
+                    Get-DBResult  $CompDBconnString $CompDBsqlString $CompDBUserTable
+
+                    If ($CompDBUserTable.Username) { 
+                        $TUDUser.DBAccount = $CompDBUserTable.Username
+                        $TUDUser.DBAccount_Status = $CompDBUserTable.Account_Status
+                        $TUDUser.DBAccount_DefaultPwd = "db$($TUDUser.Password)"
+
+                        $CompDBUserTable.Clear()
+                    }
+    
+                    Else { $CompDBUserTable
+                        $TUDUser.DBAccount = 'No account setup as yet'
+                        $TUDUser.DBAccount_Status = 'N/A'
+                        $TUDUser.DBAccount_DefaultPwd = 'N/A'
+                    }
+                }               
+    #endregion                              
             }
         }   
     }
     End {
-        $UserTable.Columns['LAST_UPDATE'].ColumnName = 'LAST_UPDATE(CORE)'
+        If ($RegUser) { 
+            $UserTable.Columns['LAST_UPDATE'].ColumnName = 'LAST_UPDATE(CORE)'
 
-        If ($UserTable.Rows[0].Account_Action -eq 'DISABLE') { $Action = $Action + $ActionType.Get_Item('AccountDisabled') }
-        If (!$UserTable.Rows[0].PASSWORD -and $UserTable.Rows[0].ID ) { $Action = $Action + $ActionType.Get_Item('NoBirthdate') }
+            If ($UserTable.Rows[0].Account_Action -eq 'DISABLE') { $Action = $Action + $ActionType.Get_Item('AccountDisabled') }
+            If (!$UserTable.Rows[0].PASSWORD -and $UserTable.Rows[0].ID ) { $Action = $Action + $ActionType.Get_Item('NoBirthdate') }
         
-        If (!$Action) { $Action = $Action + $ActionType.Get_Item('NoAction') }
+            If (!$Action) { $Action = $Action + $ActionType.Get_Item('NoAction') }
+        }
+        Else { 
+            "$ID : Not registered"
+            $Action = $Action + $ActionType.Get_Item('NotRegistered')
+        }
 
-        $UserTable
+        $TUDUser
 
         Write-Output 'Action:'
         Write-Output $Action
@@ -587,20 +490,20 @@ Param()
 Function Set-ODPNetManagedDriver {
     If (!(Test-Path -Path "$env:ProgramFiles\PackageManagement\NuGet\Packages\Oracle.ManagedDataAccess*")) {
         If ($Null -eq (Get-PackageProvider -Name NuGet)) { 
-            Install-PackageProvider -Name NuGet -WhatIf | Out-Null 
+            Install-PackageProvider -Name NuGet -Verbose | Out-Null 
         }
     
         If ($Null -eq (Get-PackageSource -Name NuGet -ErrorAction SilentlyContinue)) { 
-            Register-PackageSource -Name NuGet -ProviderName NuGet -Location 'https://www.nuget.org/api/v2/'
+            Register-PackageSource -Name NuGet -ProviderName NuGet -Location 'https://www.nuget.org/api/v2/' -Verbose
         }
     
         If ($Null -eq (Get-Package -Name Oracle.ManagedDataAccess -ErrorAction SilentlyContinue)) {
-            Find-Package -Name Oracle.ManagedDataAccess -ProviderName NuGet | Install-Package -Scope AllUsers -Force
+            Find-Package -Name Oracle.ManagedDataAccess -ProviderName NuGet | Install-Package -Scope AllUsers -Force -Verbose
         }
     }  
 
     # Load the ODP.NET assembly into Powershell 
-        Add-Type -Path "$env:ProgramFiles\PackageManagement\NuGet\Packages\Oracle.ManagedDataAccess.$($(Get-Package -Name Oracle.ManagedDataAccess).Version)\lib\net40\Oracle.ManagedDataAccess.dll"   
+       Add-Type -Path "$env:ProgramFiles\PackageManagement\NuGet\Packages\Oracle.ManagedDataAccess.$($(Get-Package -Name Oracle.ManagedDataAccess).Version)\lib\net40\Oracle.ManagedDataAccess.dll"   
 } # END: Function Set-ODPNetManagedDriver
 
 
@@ -614,4 +517,4 @@ Function Export-Credential {
 } # END: Function Export-Credential
 
 
-Export-ModuleMember -Function Get-LoggedOnUser, Get-TUDUser, Get-UserSecurityLog, Reset-NetworkAdapter, Reset-TUDUser, Export-Credential
+Export-ModuleMember -Function Get-LoggedOnUser, Get-TUDUser, Reset-NetworkAdapter, Reset-TUDUser, Export-Credential
