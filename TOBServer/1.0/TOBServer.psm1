@@ -144,7 +144,7 @@ Function Get-TUDUser {
     .EXAMPLE
     Get-TUDUser -Identity
     .EXAMPLE
-    Another example of how to use this cmdlet
+    'X00166899','x00106935','x10001012' | Get-TUDUser -CopyToClipboard
     .INPUTS
     Inputs to this cmdlet (if any)
     .OUTPUTS
@@ -171,14 +171,25 @@ Function Get-TUDUser {
         [ValidatePattern('^x[0-9]{8}$')]
         [String[]]$Identity,
 
+        # Param2 help description
+        [Parameter(Mandatory=$False)]
+        [String]$OraclePwd = $Null,
+
         # Param3 help description
         [Parameter(Mandatory=$False)]
         [Switch]$CopyToClipboard
     )
 
     Begin {
-        Set-ODPNetManagedDriver
-
+        If (!(Test-Path -Path "$env:ProgramFiles\PackageManagement\NuGet\Packages\Oracle.ManagedDataAccess*")) {
+            Write-Output 'Oracle Managed Driver not installed'
+            Write-Output 'Please run PS command 'Install-ODPNetManagedDriver''
+        }
+        Else {
+            # Load the ODP.NET assembly into Powershell 
+            Add-Type -Path "$env:ProgramFiles\PackageManagement\NuGet\Packages\Oracle.ManagedDataAccess.$($(Get-Package -Name Oracle.ManagedDataAccess).Version)\lib\net40\Oracle.ManagedDataAccess.dll"  
+        }
+    
         $SearchDCs = @('compdc1.computing.stu.it-tallaght.ie','studc1.stu.it-tallaght.ie','engdc1.eng.stu.it-tallaght.ie')
 
         $TextInfo = (Get-Culture).TextInfo
@@ -186,9 +197,10 @@ Function Get-TUDUser {
         $ExtensionAttribute15 = 'TUDublin'
         
         $COREconnString = "User id=itt_viewer;Password=""hug67*="" ;Connection Timeout=60;Data Source=(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=193.1.122.12)(PORT=1521)))(CONNECT_DATA=(SERVICE_NAME=core22)))"
-        $CompDBconnString ="User id=sys; Password=Xy9MEEtj; DBA Privilege=SYSDBA; Connection Timeout=60; Data Source=(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=10.10.2.7)(PORT=1521)))(CONNECT_DATA=(SERVICE_NAME=GLOBAL1))); Min Pool Size=10; Connection Lifetime=120; Connection Timeout=60; Incr Pool Size=5; Decr Pool Size=2; Max Pool Size=100; Validate Connection=True"
+        $CompDBconnString ="User id=sys; Password=$OraclePwd; DBA Privilege=SYSDBA; Connection Timeout=60; Data Source=(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=10.10.2.7)(PORT=1521)))(CONNECT_DATA=(SERVICE_NAME=GLOBAL1))); Min Pool Size=10; Connection Lifetime=120; Connection Timeout=60; Incr Pool Size=5; Decr Pool Size=2; Max Pool Size=100; Validate Connection=True"
 
         # Create tables 
+        $CORETable = New-Object System.Data.DataTable 'CORE Results'
         $UserTable = New-Object System.Data.DataTable 'Results'
 
         # Define and add the columns
@@ -201,6 +213,20 @@ Function Get-TUDUser {
         $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Office365 GUID',([String])))
         $UserTable.Columns.Add((New-Object System.Data.DataColumn 'EmailAddress',([String])))
         $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DataRetentionPolicy',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'ID',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Firstname',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Lastname',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Password',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Year',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Programme',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'RegCode',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Account Action',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Term',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Last Update (CORE)',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Action',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DBAccount',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DBAccount_Status',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DBAccount_DefaultPwd',([String])))
 
         $Action = ''
     
@@ -280,16 +306,32 @@ No AD user accounts are created for part-time students who are 'EL' registered.
             $CompDBsqlString = @" 
                             SELECT Username,Account_Status FROM dba_users WHERE username LIKE `'$Id`'
 "@
-                
-            Get-DBResult  $COREconnString $COREsqlString $UserTable
+              
+            $TUDUser = $UserTable.NewRow()
+
+            Get-DBResult  $COREconnString $COREsqlString $CORETable
              
-            $RegUser = $UserTable.Rows | Where-Object ID -Like $Id
+            $RegUser = $CORETable.Rows | Where-Object ID -Like $Id
             If ($RegUser) {
-                $TUDUser = $RegUser
+                $TUDUser.ID = $RegUser.ID
+                $TUDUser.Firstname = $RegUser.FIRSTNAME
+                $TUDUser.Lastname = $RegUser.LASTNAME
+                $TUDUser.Password = $RegUser.PASSWORD
+                $TUDUser.Year = $RegUser.YEARATT
+                $TUDUser.Programme = $RegUser.PROGRAMME
+                $TUDUser.RegCode = $RegUser.REGCODE
+                $TUDUser.'Account Action' = $RegUser.ACCOUNT_ACTION
+                $TUDUser.Term = $RegUser.TERM
+                $TUDUser.'Last Update (CORE)' = $RegUser.LAST_UPDATE
+
+                If ($TUDUser.'Account_Action' -eq 'DISABLE') { $TUDUser.Action = $ActionType.Get_Item('AccountDisabled') }
+                If (!$TUDUser.Password -and $TUDUser.ID ) { $TUDUser.Action = $ActionType.Get_Item('NoBirthdate') }
+        
+                If (!$Action) { $TUDUser.Action = $ActionType.Get_Item('NoAction') }
             }
             Else { 
-                $UnRegUser = $UserTable.NewRow()
-                $TUDUser = $UnRegUser }
+                $TUDUser.Action = $ActionType.Get_Item('NotRegistered') 
+            }
 
             # Search all student domains till we find the AD user account (assume no duplicates!)
             $DC = 0
@@ -299,7 +341,7 @@ No AD user accounts are created for part-time students who are 'EL' registered.
             } While ($Null -eq $ADUser)
 
             If ( $Null -eq $ADuser ) { 'User account not created yet'}
-            ElseIf ($ADUser) {                       
+            ElseIf ($ADUser) {                      
                 $TUDUser.Domain = $SearchDCs[$DC-1].Split('.')[1]
                 $TUDUser.ADAccount = $ADUser.SamAccountName
                 $TUDUser.LastLogonDate = $ADUser.LastLogonDate
@@ -307,7 +349,7 @@ No AD user accounts are created for part-time students who are 'EL' registered.
 
                 $CorrectProxyAddresses = @("SMTP:$($ADUser.EmailAddress)", "smtp:$($ADUser.SamAccountName)@myTUDublin.mail.onmicrosoft.com","sip:$($ADUser.EmailAddress)")
                 $ProxyTest1 = ($ADUser.ProxyAddresses -contains $CorrectProxyAddresses[0]) -and ($ADUser.ProxyAddresses -contains $CorrectProxyAddresses[1]) -and ($ADUser.ProxyAddresses -contains $CorrectProxyAddresses[2])
-                $ProxyTest2 = (($ADUser.ProxyAddresses).Count -eq 4) -and ($ADUser.ProxyAddresses -like 'x500*')
+                $ProxyTest2 = (($ADUser.ProxyAddresses -clike 'SMTP*').count -eq 1)
                 
                 $Office365Test = ($ADUser.EmailAddress -eq "$($ADUser.SamAccountName)@mytudublin.ie") -and ($ADUser.ExtensionAttribute15 -eq $ExtensionAttribute15) -and $ProxyTest1 -and $ProxyTest2
                 $TUDUser.'Office365 Parameters' = $Office365Test
@@ -330,55 +372,52 @@ No AD user accounts are created for part-time students who are 'EL' registered.
                     $TUDUser.DataRetentionPolicy = $ADUser.extensionAttribute2 
                 }        
     #region ComputingDB Account 
-                #If Computing, check their DB account
-                If ($TUDUser.Domain -eq 'computing'){
-                    $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DBAccount',([String])))
-                    $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DBAccount_Status',([String])))
-                    $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DBAccount_DefaultPwd',([String])))
+                # If Computing, check their DB account
+                If (($TUDUser.Domain -eq 'computing') -and ($TUDUser.PROGRAMME -like 'TA_K*')){
 
-                    $CompDBUserTable = New-Object System.Data.DataTable 'CompDB Results'
+                    # Check is the Oracle password provided as an argument
+                    If ( $OraclePwd ) {
+                        # Check is the Oracle password provided correct in
+                        $CompDBUserTable = New-Object System.Data.DataTable 'CompDB Results'
                     
-                    Get-DBResult  $CompDBconnString $CompDBsqlString $CompDBUserTable
+                        Get-DBResult  $CompDBconnString $CompDBsqlString $CompDBUserTable
+                    
+                        If ($CompDBUserTable.Username) { 
+                            $TUDUser.DBAccount = $CompDBUserTable.Username
+                            $TUDUser.DBAccount_Status = $CompDBUserTable.Account_Status
+                            $TUDUser.DBAccount_DefaultPwd = "db$($TUDUser.Password)"
 
-                    If ($CompDBUserTable.Username) { 
-                        $TUDUser.DBAccount = $CompDBUserTable.Username
-                        $TUDUser.DBAccount_Status = $CompDBUserTable.Account_Status
-                        $TUDUser.DBAccount_DefaultPwd = "db$($TUDUser.Password)"
-
-                        $CompDBUserTable.Clear()
-                    }
+                            $CompDBUserTable.Clear()
+                        }
     
-                    Else { $CompDBUserTable
-                        $TUDUser.DBAccount = 'No account setup as yet'
-                        $TUDUser.DBAccount_Status = 'N/A'
-                        $TUDUser.DBAccount_DefaultPwd = 'N/A'
+                        Else { $CompDBUserTable
+                            $TUDUser.DBAccount = 'No account setup as yet'
+                            $TUDUser.DBAccount_Status = 'N/A'
+                            $TUDUser.DBAccount_DefaultPwd = 'N/A'
+                        }
                     }
                 }               
     #endregion                              
             }
+            $UserTable.Rows.Add($TUDUser)
+
+            $CORETable.Clear()
         }   
     }
     End {
-        If ($RegUser) { 
-            $UserTable.Columns['LAST_UPDATE'].ColumnName = 'LAST_UPDATE(CORE)'
-
-            If ($UserTable.Rows[0].Account_Action -eq 'DISABLE') { $Action = $Action + $ActionType.Get_Item('AccountDisabled') }
-            If (!$UserTable.Rows[0].PASSWORD -and $UserTable.Rows[0].ID ) { $Action = $Action + $ActionType.Get_Item('NoBirthdate') }
-        
-            If (!$Action) { $Action = $Action + $ActionType.Get_Item('NoAction') }
-        }
-        Else { 
-            "$ID : Not registered"
-            $Action = $Action + $ActionType.Get_Item('NotRegistered')
-        }
-
-        $TUDUser
-
-        Write-Output 'Action:'
-        Write-Output $Action
+        $UserTable
 
         #CopyToClipboard?
-        If ($CopyToClipboard -and $Action) { Set-Clipboard $Action }
+        If ($CopyToClipboard) { 
+            $OutputArray = New-Object System.Collections.Generic.List[System.Object]
+            ForEach ($Row in $UserTable.Rows) {
+                $OutputArray.Add($Row.EmailAddress)
+                $OutputArray.Add('Hi ' + $Row.Firstname + ',')
+                $OutputArray.Add($Row.Action)
+            }
+
+            Set-Clipboard $OutputArray
+        }
     }
 } # End: Function Get-TUDUser
 
@@ -487,8 +526,30 @@ Param()
 } # END: Function Test-Verbose
 
 
-Function Set-ODPNetManagedDriver {
+Function Install-ODPNetManagedDriver {
+    <#
+    .Synopsis
+    Short description
+    .DESCRIPTION
+    Long description
+    .EXAMPLE
+    Install-ODPNetManagedDriver
+    #>
+
+    [CmdletBinding()]
+    [Alias()]
+    [OutputType([int])]
+
+    Param (
+        # Param help description
+        [Parameter(Mandatory=$False)]
+        [Switch]$Force
+    )
+
+    Set-StrictMode -Version Latest
+    
     If (!(Test-Path -Path "$env:ProgramFiles\PackageManagement\NuGet\Packages\Oracle.ManagedDataAccess*")) {
+        Write-Output 'Installing Oracle Managed Driver...'
         If ($Null -eq (Get-PackageProvider -Name NuGet)) { 
             Install-PackageProvider -Name NuGet -Verbose | Out-Null 
         }
@@ -499,12 +560,11 @@ Function Set-ODPNetManagedDriver {
     
         If ($Null -eq (Get-Package -Name Oracle.ManagedDataAccess -ErrorAction SilentlyContinue)) {
             Find-Package -Name Oracle.ManagedDataAccess -ProviderName NuGet | Install-Package -Scope AllUsers -Force -Verbose
+            Write-Output 'Installation of Oracle Managed Driver complete'
         }
-    }  
-
-    # Load the ODP.NET assembly into Powershell 
-       Add-Type -Path "$env:ProgramFiles\PackageManagement\NuGet\Packages\Oracle.ManagedDataAccess.$($(Get-Package -Name Oracle.ManagedDataAccess).Version)\lib\net40\Oracle.ManagedDataAccess.dll"   
-} # END: Function Set-ODPNetManagedDriver
+    }
+    Else { Write-Output 'Oracle Managed Driver already installed.' }     
+} # END: Function Install-ODPNetManagedDriver
 
 
 Function Import-Credential {
@@ -517,4 +577,4 @@ Function Export-Credential {
 } # END: Function Export-Credential
 
 
-Export-ModuleMember -Function Get-LoggedOnUser, Get-TUDUser, Reset-NetworkAdapter, Reset-TUDUser, Export-Credential
+Export-ModuleMember -Function Export-Credential, Get-LoggedOnUser, Get-TUDUser, Install-ODPNetManagedDriver, Reset-NetworkAdapter, Reset-TUDUser
