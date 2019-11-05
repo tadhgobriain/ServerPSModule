@@ -1,4 +1,6 @@
-﻿Function Get-LoggedOnUser {
+﻿#Requires -Version 5.0
+
+Function Get-LoggedOnUser {
     <#
     .SYNOPSIS
         This function queries CIM on the local or a remote computer and returns the user (local or Active Directory) that is currently
@@ -52,6 +54,133 @@
         }
     }
 } # END: Function Get-LoggedOnUser
+
+
+Function Get-UserSecurityLog {
+    # https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventID=4624
+    # https://docs.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4624
+    # https://stackoverflow.com/questions/50046370/extracting-from-the-message-in-powershell
+    # http://duffney.io/AddCredentialsToPowerShellFunctions
+    # 
+
+    <#
+    .Synopsis
+        Retrieves security logs from a client PC relating to user logon/logoff events.
+    .DESCRIPTION
+        Long description
+    .EXAMPLE
+        Get-UserSecurityLog | Format-Table -Autosize
+    .EXAMPLE
+        Get-UserSecurityLog -ComputerName lab150-01 -Username 'administrator' -Days 7
+    .EXAMPLE
+        @('lab150-01','lab150-02') | Get-UserSecurityLog -Days 3
+    .EXAMPLE
+        $Password = ConvertTo-SecureString "password" -AsPlainText -Force
+        $Cred = New-Object System.Management.Automation.PSCredential ("lab150-01\administrator", $Password)
+        Get-UserSecurityLog -ComputerName lab150-01 -Credential $Cred
+
+    #>
+
+    [CmdletBinding()]
+    [Alias()]
+    [OutputType([int])]
+
+    Param (
+        # Param1 help description
+        [Parameter(Mandatory=$False,
+            ValueFromPipeline=$True)]
+        [String[]]$ComputerName = $env:COMPUTERNAME,
+
+        # Username help
+        [Parameter(Mandatory=$False)]
+        [String]$Username = '',
+
+        # Days to look back must be between 1 and 30
+        [Parameter(Mandatory=$False)]
+        [ValidateRange(1,30)]
+        [Byte]$Days = 1
+
+        <# 
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        [System.Management.Automation.Credential()]
+        $Credential = [System.Management.Automation.PSCredential]::Empty #>
+    )
+                                                                       
+    Begin {
+        #Set the column width of the terminal window on the computer this script is run on (for Start-Transcript output)
+        If( $Host -and $Host.UI -and $Host.UI.RawUI ) {
+            $RawUI = $Host.UI.RawUI
+            $OldSize = $RawUI.BufferSize
+            $TypeName = $OldSize.GetType( ).FullName
+            $NewSize = New-Object $TypeName (500, $OldSize.Height)
+            $RawUI.BufferSize = $NewSize
+        }
+
+    #$Password = ConvertTo-SecureString "qazX989%" -AsPlainText -Force
+
+    $Password = Get-Credential
+
+    $Cred = New-Object System.Management.Automation.PSCredential ("computing\cdatobriain", $password)
+
+    $Date = (Get-Date).AddDays(-($Days))
+    }
+    Process {
+        ForEach ($Computer in $ComputerName) {
+            Try {
+                $Logon = Get-WinEvent -FilterHashtable @{logname='security';id=4624;data=$UserName} -ComputerName $Computer -Credential $Cred -ErrorAction Stop |
+                Where-Object { ($_.Properties[4].Value -like 'S-1-5-21-*') -and ((2,3,7,10,11) -contains $_.Properties[8].Value) -and ($_.TimeCreated -gt $Date) }  |
+                Select-Object -Property TimeCreated,
+                    @{label='UserName';expression={$_.properties[5].value}},
+                    @{label='LogonType';expression={$_.properties[8].value}},
+                    @{label='LogonProcessName';expression={$_.properties[9].value}},
+                    @{label='AuthenticationPackage';expression={$_.properties[10].value}},
+                    @{label='LogonID';expression={$_.properties[7].value}},
+                    @{label='Linked LogonID';expression={$_.properties[25].value}},
+                    @{label='ComputerName';expression={$_.properties[11].value}},
+                    @{label='Domain';expression={($_.properties[6].value).split('.')[0]}},
+                    @{label='Source IP';expression={$_.properties[18].value}},
+                    @{label='Event';expression={"Logon"}}
+
+                            
+            $AccountLogoff = Get-WinEvent -FilterHashtable @{logname='security';id=4634} -ComputerName $Computer -Credential $Cred |       
+                Where-Object { ($_.Properties[0].Value -like 'S-1-5-21-*') -and ($_.TimeCreated -gt $Date) } |
+                Select-Object -Property TimeCreated,
+                    @{label='UserName';expression={$_.properties[1].value}},
+                    @{label='LogonType';expression={$_.properties[4].value}},
+                    @{label='LogonID';expression={$_.properties[3].value}},
+                    @{label='Domain';expression={$_.properties[2].value}},
+                    @{label='Event';expression={"AccountLogoff"}}
+        
+        
+            $UserInitiatedLogoff = Get-WinEvent -FilterHashtable @{logname='security';id=4647} -ComputerName $Computer -Credential $Cred |
+                Where-Object { ($_.Properties[0].Value -like 'S-1-5-21-*') -and ($_.TimeCreated -gt $Date) } |
+                Select-Object -Property TimeCreated,
+                    @{label='UserName';expression={$_.properties[1].value}},
+                    @{label='LogonID';expression={$_.properties[3].value}},
+                    @{label='Domain';expression={$_.properties[2].value}},
+                    @{label='Event';expression={"UserInitiatedLogoff"}}
+
+            }
+            Catch {
+               $_.Exception.Message
+            }  
+        }
+    }
+    End {
+        $Logs = $Logon + $AccountLogoff + $UserInitiatedLogoff
+
+        $Logs | ForEach-Object {
+            If ($_.LogonType -eq '2') { $_.LogonType = 'Interactive' }
+            ElseIf ($_.LogonType -eq '3') { $_.LogonType = 'Network' }
+            ElseIf ($_.LogonType -eq '7')  { $_.LogonType = 'Unlock' }
+            ElseIf ($_.LogonType -eq '10')  { $_.LogonType = 'RemoteInteractive' }
+            ElseIf ($_.LogonType -eq '11')  { $_.LogonType = 'CachedInteractive' }
+        }
+        
+        $Logs
+    }
+} # END: Function Get-UserSecurityLog
 
 
 Function Reset-NetworkAdapter {
@@ -142,9 +271,9 @@ Function Get-TUDUser {
     .DESCRIPTION
     ToDo: Need to have $Identity as an output to pipe into Reset-ITTUser
     .EXAMPLE
-    Get-TUDUser -Identity
+    Get-TUDUser -Identity X00058529
     .EXAMPLE
-    'X00166899','x00106935','x10001012' | Get-TUDUser -CopyToClipboard
+    'X00058529','X10001012' | Get-TUDUser -CopyToClipboard
     .INPUTS
     Inputs to this cmdlet (if any)
     .OUTPUTS
@@ -173,7 +302,7 @@ Function Get-TUDUser {
 
         # Param2 help description
         [Parameter(Mandatory=$False)]
-        [String]$OraclePwd = $Null,
+        [String]$OraclePwd = 'Z3ggySt1rd5st',
 
         # Param3 help description
         [Parameter(Mandatory=$False)]
@@ -197,7 +326,7 @@ Function Get-TUDUser {
         $ExtensionAttribute15 = 'TUDublin'
         
         $COREconnString = "User id=itt_viewer;Password=""hug67*="" ;Connection Timeout=60;Data Source=(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=193.1.122.12)(PORT=1521)))(CONNECT_DATA=(SERVICE_NAME=core22)))"
-        $CompDBconnString ="User id=sys; Password=$OraclePwd; DBA Privilege=SYSDBA; Connection Timeout=60; Data Source=(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=10.10.2.7)(PORT=1521)))(CONNECT_DATA=(SERVICE_NAME=GLOBAL1))); Min Pool Size=10; Connection Lifetime=120; Connection Timeout=60; Incr Pool Size=5; Decr Pool Size=2; Max Pool Size=100; Validate Connection=True"
+        $CompDBconnString ="User id=AdminScripts; Password=$OraclePwd; Connection Timeout=60; Data Source=(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=10.10.2.7)(PORT=1521)))(CONNECT_DATA=(SERVICE_NAME=GLOBAL1))); Min Pool Size=10; Connection Lifetime=120; Connection Timeout=60; Incr Pool Size=5; Decr Pool Size=2; Max Pool Size=100; Validate Connection=True"
 
         # Create tables 
         $CORETable = New-Object System.Data.DataTable 'CORE Results'
@@ -303,10 +432,6 @@ No AD user accounts are created for part-time students who are 'EL' registered.
                 WHERE ID LIKE '$Id'                    
 "@
 
-            $CompDBsqlString = @" 
-                            SELECT Username,Account_Status FROM dba_users WHERE username LIKE `'$Id`'
-"@
-              
             $TUDUser = $UserTable.NewRow()
 
             Get-DBResult  $COREconnString $COREsqlString $CORETable
@@ -338,7 +463,7 @@ No AD user accounts are created for part-time students who are 'EL' registered.
             Do {
                 $ADUser = Get-ADUser -Filter "SamAccountName -Like '$ID'" -Properties Company,Office,EmailAddress,ExtensionAttribute2,ExtensionAttribute15,ProxyAddresses,LastLogonDate,PasswordExpired,MemberOf,mS-DS-ConsistencyGuid -Server $SearchDCs[$DC]
                 $DC = $DC + 1
-            } While ($Null -eq $ADUser)
+            } While (($Null -eq $ADUser) -and ($DC -le ($SearchDCs.Count)-1))
 
             If ( $Null -eq $ADuser ) { 'User account not created yet'}
             ElseIf ($ADUser) {                      
@@ -374,6 +499,9 @@ No AD user accounts are created for part-time students who are 'EL' registered.
     #region ComputingDB Account 
                 # If Computing, check their DB account
                 If (($TUDUser.Domain -eq 'computing') -and ($TUDUser.PROGRAMME -like 'TA_K*')){
+                    $CompDBsqlString = @" 
+                            SELECT Username,Account_Status FROM dba_users WHERE username LIKE `'$Id`'
+"@
 
                     # Check is the Oracle password provided as an argument
                     If ( $OraclePwd ) {
@@ -577,4 +705,4 @@ Function Export-Credential {
 } # END: Function Export-Credential
 
 
-Export-ModuleMember -Function Export-Credential, Get-LoggedOnUser, Get-TUDUser, Install-ODPNetManagedDriver, Reset-NetworkAdapter, Reset-TUDUser
+Export-ModuleMember -Function Export-Credential, Get-LoggedOnUser, Get-TUDUser, Get-UserSecurityLog, Install-ODPNetManagedDriver, Reset-NetworkAdapter, Reset-TUDUser
