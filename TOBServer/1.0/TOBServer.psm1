@@ -573,11 +573,11 @@ End {
 Function Reset-TUDUser {
     <#
     .Synopsis
-    Short description
+    Reset AAD user account using specific AAD DC
     .DESCRIPTION
     Long description
     .EXAMPLE
-    Reset-ITTUser -Identity
+    Reset-TUDUser -Identity
     .EXAMPLE
     Another example of how to use this cmdlet
     .INPUTS
@@ -606,20 +606,30 @@ Function Reset-TUDUser {
                    ValueFromPipeline=$True,
                    ValueFromPipelineByPropertyName=$True)]
         [ValidatePattern('^x[0-9]{8}$')]
-        [String[]]$Id,
+        [String[]]$Identity,
 
         # Param2 help description
         [Parameter(Mandatory=$False)]
-        [Switch]$CopyToClipboard
+        [Switch]$SkipChangeOnNextLogin
     )
 
     Begin {
-
+        $TextInfo = (Get-Culture).TextInfo
+        $AzureDC = 'tadco03.computing.stu.it-tallaght.ie'
     }
     Process {
-        If ($PSCmdlet.ShouldProcess("Target", "Operation")){
-        }
-        "ID is $ID"
+        ForEach ($Id in $Identity) {
+            $Id = $TextInfo.ToTitleCase($Id)
+            $DefaultPassword = (Get-TUDUser -Identity $ID).Password
+
+            If ($PSCmdlet.ShouldProcess($ID)){
+                Set-ADAccountPassword -Identity $ID -NewPassword ( ConvertTo-SecureString -AsPlainText $DefaultPassword ) -Server $AzureDC
+                If ($SkipChangeOnNextLogin) {
+                    $Student = Get-ADUser -Filter "SamAccountName -like '$Id'"
+                    $Student | Set-ADUser -ChangePasswordAtLogon $True
+                }
+            }
+        }    
     }
     End {
     
