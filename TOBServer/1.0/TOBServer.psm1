@@ -570,6 +570,140 @@ End {
 } # End: Function Get-TUDUser
 
 
+Function Get-TUDUserLastLogon {
+    <#
+    .Synopsis
+    Get-TUDUserLastLogon gets the last logon of an Active Directory user
+    .DESCRIPTION
+    ToDo:
+    .EXAMPLE
+    Get-TUDUserLastLogon -Identity x12345678
+    .EXAMPLE
+    'X00058529','X10001012' | Get-TUDUserLastLogOn
+    .INPUTS
+    Provide the StudentID in the form <x12345678> (case-insensitive)
+    .OUTPUTS
+    Output from this cmdlet (if any)
+    .NOTES
+    Each domain controller is queried separately to calculate the last logon from all results of all non-Azure DCs in a domain.
+    .COMPONENT
+    The component this cmdlet belongs to
+    .ROLE
+    The role this cmdlet belongs to
+    .FUNCTIONALITY
+    The functionality that best describes this cmdlet
+    #>
+    
+    [CmdletBinding(PositionalBinding=$False,
+    ConfirmImpact='Medium')]
+    [OutputType([String])]
+    
+    Param (
+        # Param1 help description
+        [Parameter(Mandatory=$True,
+        Position=0,
+        ValueFromPipeline=$True)]
+        [ValidatePattern('^x[0-9]{8}$')]
+        [String[]]$Identity
+    )
+     
+    Begin {
+        $TextInfo = (Get-Culture).TextInfo
+    
+        $DomainDC = Get-ADDomainController -Filter * | Where-Object Site -ne 'AzureAD'
+    
+        # Create result table
+        $UserTable = New-Object System.Data.DataTable 'Results'
+        # Create table for instance of user on each DC
+        $UserInstanceDCTable = New-Object System.Data.DataTable 'Instances'
+    
+        # Define and add the columns
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'ID',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Firstname',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Lastname',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Description',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'LastLogon',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'LastIntLogon',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Logon DC',([String])))
+        $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Notes',([String])))
+
+        $UserInstanceDCTable.Columns.Add((New-Object System.Data.DataColumn 'ID',([String])))
+        $UserInstanceDCTable.Columns.Add((New-Object System.Data.DataColumn 'Firstname',([String])))
+        $UserInstanceDCTable.Columns.Add((New-Object System.Data.DataColumn 'Lastname',([String])))
+        $UserInstanceDCTable.Columns.Add((New-Object System.Data.DataColumn 'Description',([String])))
+        $UserInstanceDCTable.Columns.Add((New-Object System.Data.DataColumn 'LastLogon',([String])))
+        $UserInstanceDCTable.Columns.Add((New-Object System.Data.DataColumn 'LastIntLogon',([String])))
+        $UserInstanceDCTable.Columns.Add((New-Object System.Data.DataColumn 'Logon DC',([String])))
+        $UserInstanceDCTable.Columns.Add((New-Object System.Data.DataColumn 'Notes',([String])))
+    }
+    
+    Process {    
+        ForEach ($Id in $Identity) {
+            $Id = $TextInfo.ToTitleCase($Id)
+    
+            $TUDUser = $UserTable.NewRow()
+    
+            $AccountExist = DSQuery User -samid $Id
+            If ($AccountExist) { 
+                ForEach ($DC in $DomainDC) {
+
+                    $UserInstanceDC = $UserInstanceDCTable.NewRow()
+
+                    Try {
+                        $SearchUser = Get-ADUser $Id -Server $DC -Properties Description,LastLogon,msDS-LastSuccessfulInteractiveLogonTime -ErrorAction Stop
+    
+                        $UserInstanceDC.ID            = $SearchUser.SamAccountName
+                        $UserInstanceDC.Firstname     = $SearchUser.GivenName
+                        $UserInstanceDC.Lastname      = $SearchUser.Surname
+                        $UserInstanceDC.Description   = $SearchUser.Description
+                        $UserInstanceDC.'Logon DC'    = $DC.Name
+                        $UserInstanceDC.LastLogon     = [datetime]::FromFileTime($SearchUser.LastLogon)
+                        $UserInstanceDC.LastIntLogon  = [datetime]::FromFileTime($SearchUser.'msDS-LastSuccessfulInteractiveLogonTime')
+
+                        $UserInstanceDCTable.Rows.Add($UserInstanceDC)
+                    }
+                    Catch {
+                        Write-Warning "No reports from $($dc)!"
+                    }
+                }
+
+                $UserLastLogonDC = $UserInstanceDCTable | Where-Object {$_.lastlogon -NotLike '*1601*'} | Sort-Object LastLogon -Descending | Select-Object -First 1
+                
+                If ($UserLastLogonDC) {
+                    $TUDUser.ID                         = $UserLastLogonDC.ID
+                    $TUDUser.Firstname                  = $UserLastLogonDC.FirstName
+                    $TUDUser.Lastname                   = $UserLastLogonDC.Lastname
+                    $TUDUser.Description                = $UserLastLogonDC.Description
+                    $TUDUser.LastLogon                  = $UserLastLogonDC.LastLogon
+                    $TUDUser.LastIntLogon               = $UserLastLogonDC.LastIntLogon
+                    $TUDUser.'Logon DC'                 = $UserLastLogonDC.'Logon DC'
+                }
+                
+                Else {
+                    #Write-Warning "No reports for user $($user.name). Possible reason: No first login."
+                    $TUDUser.ID                         = $SearchUser.SamAccountName
+                    $TUDUser.Firstname                  = $SearchUser.GivenName
+                    $TUDUser.Lastname                   = $SearchUser.Surname
+                    $TUDUser.Description                = $SearchUser.Description
+                    $TUDUser.Notes                      = 'No initial login'
+                }
+
+                $UserInstanceDCTable.Clear()
+            }
+            Else {
+                $TUDUser.Notes = 'User account does not exist'
+            }
+            
+            $UserTable.Rows.Add($TUDUser)
+        }
+    }
+    
+    End {
+        $UserTable
+    }   
+} # End: Function Get-TUDUserLastLogon
+
+
 Function Reset-TUDUser {
     <#
     .Synopsis
@@ -735,4 +869,4 @@ Function Export-Credential {
 } # END: Function Export-Credential
 
 
-Export-ModuleMember -Function Export-Credential, Get-LoggedOnUser, Get-TUDUser, Get-UserSecurityLog, Install-ODPNetManagedDriver, Reset-NetworkAdapter, Reset-TUDUser
+Export-ModuleMember -Function Export-Credential, Get-LoggedOnUser, Get-TUDUser, Get-TUDUserLastLogon, Get-UserSecurityLog, Install-ODPNetManagedDriver, Reset-NetworkAdapter, Reset-TUDUser
