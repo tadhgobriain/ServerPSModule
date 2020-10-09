@@ -401,7 +401,7 @@ Email to IT Services: The programme code associated with this student is not reg
         'Duplicate account' = @'
 There is a duplicate AD account in another domain.
 Once this duplicate account is deleted a new account will be created automatically in the Computing domain.
-The email GUID attached to the duplicate AD account will need to be noted and set in the newly created account (extAttribute15 field).
+The email GUID attached to the duplicate AD account will need to be noted and set in the newly created account ('mS-DS-ConsistencyGuid' field).
 Email itsupport.tallaght@tudublin.ie or ElecTechSupport.Tallaght@TUDublin.ie: 
 
      I would be grateful if you would delete an old duplicate account in your domain.
@@ -493,7 +493,9 @@ Process {
             Else {$Office365Licence = 'No'}
             $TUDUser.'Office365 Licence' = $Office365Licence
 
-            If ($Null -ne ($ADUser.'mS-DS-ConsistencyGuid')) { $TUDUser.'Office365 GUID' = 'True' } 
+            If ($Null -ne ($ADUser.'mS-DS-ConsistencyGuid')) { 
+                $TUDUser.'Office365 GUID' = Convert-ByteArrayToString ($ADUser.'mS-DS-ConsistencyGuid')
+            }
             Else {$TUDUser.'Office365 GUID' = 'False'}
 
             If ($TUDUser.'Office365 Licence' -eq 'No' -and $TUDUser.'Office365 Parameters' -and $TUDUser.'Office365 GUID' -eq 'True' -and $TUDUser.'Current Domain' -eq 'computing') { 
@@ -757,10 +759,11 @@ Function Reset-TUDUser {
             $DefaultPassword = (Get-TUDUser -Identity $ID).Password
 
             If ($PSCmdlet.ShouldProcess($ID)){
-                Set-ADAccountPassword -Identity $ID -NewPassword ( ConvertTo-SecureString -AsPlainText $DefaultPassword ) -Server $AzureDC
-                If ($SkipChangeOnNextLogin) {
-                    $Student = Get-ADUser -Filter "SamAccountName -like '$Id'"
-                    $Student | Set-ADUser -ChangePasswordAtLogon $True
+                $Student = Get-ADUser -Filter "SamAccountName -like '$Id'"
+                Set-ADAccountPassword -Identity $ID -NewPassword ( ConvertTo-SecureString -AsPlainText $DefaultPassword -Force) -Server $AzureDC
+                If (!$SkipChangeOnNextLogin) { $Student | Set-ADUser -ChangePasswordAtLogon $True }
+                Else {
+                    $Student | Set-ADUser -ChangePasswordAtLogon $False
                 }
             }
         }    
@@ -770,6 +773,91 @@ Function Reset-TUDUser {
     }
 } # End: Function Reset-TUDUser
 
+
+Function Set-TUDUser {
+    <#
+    .Synopsis
+    Set AAD user account using specific AAD DC
+    .DESCRIPTION
+    Set AAD user account using specific AAD DC, specifically the email GUID, a 16-digit hex value, in string format.
+    .EXAMPLE
+    Set-TUDUser -Identity x12345678 -GUID '01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f 10'
+    .EXAMPLE
+    Another example of how to use this cmdlet
+    .INPUTS
+    Inputs to this cmdlet (if any)
+    .OUTPUTS
+    Output from this cmdlet (if any)
+    .NOTES
+    Get-ADUser returns a byte array, but Set-ADUser needs a GUID.
+    .COMPONENT
+    The component this cmdlet belongs to
+    .ROLE
+    The role this cmdlet belongs to
+    .FUNCTIONALITY
+    The functionality that best describes this cmdlet
+    #>
+
+    [CmdletBinding( SupportsShouldProcess=$True, 
+                    PositionalBinding=$False,
+                    ConfirmImpact='Medium')]
+    [OutputType([String])]
+
+    Param (
+        # Param1 help description
+        [Parameter(Mandatory=$True,
+                   Position=0,
+                   ValueFromPipeline=$True,
+                   ValueFromPipelineByPropertyName=$True)]
+        [String[]]$Identity,
+
+        # Param2 help description
+        [Parameter(Mandatory=$True,
+                   Position=1,
+                   ValueFromPipeline=$True,
+                   ValueFromPipelineByPropertyName=$True)]
+        [String]$msdsGUID,
+
+        # Param2 help description
+        [Parameter(Mandatory=$False)]
+        [Switch]$Force
+    )
+
+    Begin {
+        $AzureDC = 'tadco03.computing.stu.it-tallaght.ie'
+    }
+    Process {
+        ForEach ($Id in $Identity) {
+            If ($Identity -notmatch '^x[0-9]{8}$') {
+                Throw "ERROR: $Identity is not valid. Enter a name that begins with an 'x' or 'X' and ends with a eight-digit number."
+            }
+            If ($msdsGUID -notmatch '^([0-9a-z]{2}\s){15}[0-9a-z]{2}$') {
+                Throw "ERROR: $msdsGUID is not valid. Enter a ms-ds-consistency guid that is a string containing 16 space-seperated 2-digit hex values."
+            }
+
+            If ($PSCmdlet.ShouldProcess($ID)){
+                $Student = Get-ADUser -Filter "SamAccountName -eq '$Id'" -Property mS-DS-ConsistencyGuid
+                If (!$Force -and $Student.'mS-DS-ConsistencyGuid') {
+                    Write-Warning "User $ID already has an ms-ds-consistency GUID assigned."
+                    Write-Warning "GUID: $(Convert-ByteArrayToString ($Student.'mS-DS-ConsistencyGuid'))"
+                    Write-Warning "Use -force to overwrite value."
+                }
+                ElseIf ($Force -and $Student.'mS-DS-ConsistencyGuid'){         
+                    Write-Warning "Overwriting existing GUID on user $ID"
+                    Write-Warning "Old GUID: $(Convert-ByteArrayToString ($Student.'mS-DS-ConsistencyGuid'))"
+                    $UsermsdsGUID = Convert-StringToGUID ($msdsGUID)
+                    $Student | Set-ADUser -Replace @{'ms-ds-ConsistencyGUID' = $UsermsdsGUID} -Server $AzureDC
+                }
+                Else {
+                    $UsermsdsGUID = Convert-StringToGUID ($msdsGUID)
+                    $Student | Set-ADUser -Add @{'ms-ds-ConsistencyGUID' = $UsermsdsGUID} # Need to do it on local DC
+                }
+            }
+        }    
+    }
+    End {  
+    }
+} # End: Function Set-TUDUser
 
 Function Get-DBResult {
     Param (
@@ -869,4 +957,18 @@ Function Export-Credential {
 } # END: Function Export-Credential
 
 
-Export-ModuleMember -Function Export-Credential, Get-LoggedOnUser, Get-TUDUser, Get-TUDUserLastLogon, Get-UserSecurityLog, Install-ODPNetManagedDriver, Reset-NetworkAdapter, Reset-TUDUser
+Function Convert-StringToGUID ($msdsGuidString) {
+    $HexArray = $msdsGuidString -Split(' ') -replace '..','0x$&' -ne ''
+    [byte[]]$ByteArray = ForEach ($Hex in $HexArray){ [uint32]$Hex }
+    $GUID = [guid]$ByteArray
+
+    Return $GUID
+} # END: Function Convert-StringToGUID
+
+Function Convert-ByteArrayToString ($msdsGuid) {
+    $msdsGuidString = [string]::Join(" ",($msdsGuid | ForEach-Object {$_.ToString("X2")}))
+    Return $msdsGuidString
+} # END: Function Convert-ByteArrayToString
+
+
+Export-ModuleMember -Function Export-Credential, Get-LoggedOnUser, Get-TUDUser, Get-TUDUserLastLogon, Get-UserSecurityLog, Install-ODPNetManagedDriver, Reset-NetworkAdapter, Reset-TUDUser, Set-TUDUser
