@@ -446,7 +446,10 @@ Process {
             $TUDUser.Lastname = $RegUser.LASTNAME
             $TUDUser.Password = $RegUser.PASSWORD
             $TUDUser.Year = $RegUser.YEARATT
-            $TUDUser.Programme = $RegUser.PROGRAMME
+
+            If ($RegUser.PROGRAMME -ne 'TA_HHUMN_ERB') { $TUDUser.Programme = $RegUser.PROGRAMME }
+            Else { $TUDUser.Programme = $RegUser.PROGRAMME + ' (Erasmus)' }
+            
             $TUDUser.RegCode = $RegUser.REGCODE
             $TUDUser.'Account Action' = $RegUser.ACCOUNT_ACTION
             $TUDUser.Term = $RegUser.TERM
@@ -606,13 +609,18 @@ Function Get-TUDUserLastLogon {
         Position=0,
         ValueFromPipeline=$True)]
         [ValidatePattern('^x[0-9]{8}$')]
-        [String[]]$Identity
+        [String[]]$Identity,
+
+        # Param2 help description
+        [Parameter(Mandatory=$False)]
+        [Switch]$IncludeCloudLogins
     )
      
     Begin {
         $TextInfo = (Get-Culture).TextInfo
     
-        $DomainDC = Get-ADDomainController -Filter * | Where-Object Site -ne 'AzureAD'
+        If ($IncludeCloudLogins) { $DomainDC = Get-ADDomainController -Filter * }
+        Else { $DomainDC = Get-ADDomainController -Filter * | Where-Object Site -ne 'AzureAD' } 
     
         # Create result table
         $UserTable = New-Object System.Data.DataTable 'Results'
