@@ -327,7 +327,7 @@ Begin {
     $UserTable = New-Object System.Data.DataTable 'Results'
 
     # Define and add the columns
-    $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Current Domain',([String])))
+    $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Correct Domain',([String])))
     $UserTable.Columns.Add((New-Object System.Data.DataColumn 'ADAccount',([String])))
     $UserTable.Columns.Add((New-Object System.Data.DataColumn 'LastLogonDate',([String])))
     $UserTable.Columns.Add((New-Object System.Data.DataColumn 'PasswordExpired',([String])))
@@ -447,8 +447,9 @@ Process {
             $TUDUser.Password = $RegUser.PASSWORD
             $TUDUser.Year = $RegUser.YEARATT
 
-            If ($RegUser.PROGRAMME -ne 'TA_HHUMN_ERB') { $TUDUser.Programme = $RegUser.PROGRAMME }
-            Else { $TUDUser.Programme = $RegUser.PROGRAMME + ' (Erasmus)' }
+            If ($RegUser.PROGRAMME -eq 'TA_HHUMN_ERB' -or ($RegUser.Programme).Substring(3,3) -eq 'ERA') {
+                $TUDUser.Programme = $RegUser.PROGRAMME + ' (Erasmus)' }
+            Else { $TUDUser.Programme = $RegUser.PROGRAMME }
             
             $TUDUser.RegCode = $RegUser.REGCODE
             $TUDUser.'Account Action' = $RegUser.ACCOUNT_ACTION
@@ -474,12 +475,25 @@ Process {
         } While (($Null -eq $ADUser) -and ($DC -le ($SearchDCs.Count)-1))
 
         If ( $Null -eq $ADuser ) { 'User account not created yet'}
-        ElseIf ($ADUser) {                      
-            $TUDUser.'Current Domain' = $SearchDCs[$DC-1].Split('.')[1]
-            $TUDUser.ADAccount = $ADUser.SamAccountName
+        ElseIf ($ADUser) { 
+            # EngProgCodes: 'TA_E*','FS_C*', not 'TA_ERA*'
+            # CompProgCodes: 'TA_S*','TA_K*','FS_S*'
+            # StuProgCodes: 'TA_A*','TA_B*','TA_H*','TA_ERA*' 
+            If (($TUDUser.Programme -like 'TA_E*') -or ($TUDUser.Programme -like 'FS_C*') -and ($TUDUser.Programme -notlike 'TA_ERA*')) {
+                $TUDUser.'Correct Domain' = 'Eng'
+            } 
+            If ($TUDUser.Programme -like 'TA_S*' -or $TUDUser.Programme -like 'TA_K*') {
+                $TUDUser.'Correct Domain' = 'Computing'
+            }
+            If (($TUDUser.Programme -like 'TA_A*') -or ($TUDUser.Programme -like 'TA_B*') -or ($TUDUser.Programme -like 'TA_H*') -or ($TUDUser.Programme -like 'TA_ERA*')) {
+                $TUDUser.'Correct Domain' = 'Stu'
+            }     
+
+            
+            $TUDUser.ADAccount = $SearchDCs[$DC-1].Split('.')[1] + '\' + $ADUser.SamAccountName
             $TUDUser.LastLogonDate = $ADUser.LastLogonDate
             $TUDUser.PasswordExpired = $ADUser.PasswordExpired
-            If (($TUDUser.'Current Domain' -ne 'computing') -and ($TUDUser.PROGRAMME -like 'TA_K*' -or $TUDUser.PROGRAMME -like 'TA_S*' -or $TUDUser.PROGRAMME -like 'FS_S*')){
+            If (($TUDUser.'Correct Domain' -ne 'computing') -and ($TUDUser.PROGRAMME -like 'TA_K*' -or $TUDUser.PROGRAMME -like 'TA_S*' -or $TUDUser.PROGRAMME -like 'FS_S*')){
                 $TUDUser.Action = $ActionType.Get_Item('Duplicate Account')
             }
 
