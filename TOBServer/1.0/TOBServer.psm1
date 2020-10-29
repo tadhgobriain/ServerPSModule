@@ -351,9 +351,12 @@ Begin {
     $UserTable.Columns.Add((New-Object System.Data.DataColumn 'DBAccount_DefaultPwd',([String])))
     $UserTable.Columns.Add((New-Object System.Data.DataColumn 'Action',([String])))
 
-    $ActionType = @{
+    $ActionType = @{ 
         'NoAction' = @'
 No action is necessary at this time.
+'@
+        'ADAccountNotCreatedYet' = @'
+The AD account has not been created yet. Please wait 1 hour and run 'Get-TUDUser' again.
 '@
         'NotRegistered' = @'
 Email body to student:
@@ -408,7 +411,7 @@ Email body to IT Services:
         'Duplicate account (comp)' = @'
 There is a duplicate AD account in another domain.
 Once this duplicate account is deleted a new account will be created automatically in the Computing domain.
-The Office365 GUID attached to the duplicate AD account will need to be noted and set in the newly created account ('mS-DS-ConsistencyGuid' field).
+The Office365 GUID attached to the duplicate AD account will need to be noted and set in the newly created AD account.
 Use 'Set-ADuser -Identity -Guid' for this purpose.
 Email: itsupport.tallaght@tudublin.ie or ElecTechSupport.Tallaght@TUDublin.ie: 
 
@@ -419,7 +422,7 @@ Email body:
 '@
         'Duplicate account' = @'
 There is a duplicate AD account in another domain.
-The Office365 GUID attached to the duplicate AD account will need to be noted and set in the newly created account ('mS-DS-ConsistencyGuid' field).
+The Office365 GUID attached to the duplicate AD account will need to be noted and set in the newly created AD account.
 Use 'Set-ADuser -Identity -Guid' for this purpose.
 Email: itsupport.tallaght@tudublin.ie or ElecTechSupport.Tallaght@TUDublin.ie: 
 
@@ -456,6 +459,8 @@ Process {
 "@
 
         $TUDUser = $UserTable.NewRow()
+
+        $TUDUser.Action = $ActionType.Get_Item('NoAction')
 
         Get-DBResult  $COREconnString $COREsqlString $CORETable
             
@@ -494,6 +499,8 @@ Process {
             $DC = $DC + 1
         } While (($Null -eq $ADUser) -and ($DC -le ($SearchDCs.Count)-1))
 
+        $CurrentDomain = $SearchDCs[$DC-1].Split('.')[1]
+
         # Establish correct domain based on programme code
             # EngProgCodes: 'TA_E*','FS_C*', not 'TA_ERA*'
             # CompProgCodes: 'TA_S*','TA_K*','FS_S*'
@@ -508,15 +515,13 @@ Process {
                 $TUDUser.'Correct Domain' = 'Stu'
             }
 
-        If ( ($Null -eq $ADuser) -and ($TUDUser.'Correct Domain' -ne 'Computing') ) { 'User account not created yet' }
-        Else { 
-                'User account not created yet as existing AD account in another domain'
-                $TUDUser.Action = $ActionType.Get_Item('Duplicate Account (comp)') 
-            }
-        
+        If ( ($Null -eq $ADuser) -and ($TUDUser.'Correct Domain' -eq $CurrentDomain) ) { $TUDUser.Action = $ActionType.Get_Item('ADAccountNotCreatedYet')  }
+        ElseIf ( ($Null -eq $ADuser) -and ($TUDUser.'Correct Domain' -ne $CurrentDomain ) ) { $TUDUser.Action = $ActionType.Get_Item('Duplicate Account (comp)')  }
+
+
         If ($ADUser) { 
             # Check for AD account in another domain
-            If ( $TUDUser.'Correct Domain' -ne $SearchDCs[$DC-1].Split('.')[1] ) { $TUDUser.Action = $ActionType.Get_Item('Duplicate Account') }     
+            If ( $TUDUser.'Correct Domain' -ne $CurrentDomain ) { $TUDUser.Action = $ActionType.Get_Item('Duplicate Account') }     
 
             
             $TUDUser.ADAccount = $SearchDCs[$DC-1].Split('.')[1] + '\' + $ADUser.SamAccountName
