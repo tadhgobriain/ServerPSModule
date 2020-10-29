@@ -356,6 +356,8 @@ Begin {
 No action is necessary at this time.
 '@
         'NotRegistered' = @'
+Email body to student:
+
 According to our records you are not currently registered.
 
 Please contact the Registrars/Part-Time/Finance office and clarify if there is a delay, or if there is something outstanding that they require from you.
@@ -365,6 +367,8 @@ https://www.tudublin.ie/for-students/student-services-and-support/student-inform
 An account will be setup automatically once your registration is complete.
 '@
         'AccountDisabled' = @'
+Email body to student:
+
 According to our records there are outstanding issues with your registration.
 
 As a result of this your account has been automatically disabled.
@@ -378,6 +382,8 @@ https://www.tudublin.ie/for-students/student-services-and-support/student-inform
 If you are still have difficulties with your account following that, please contact us again if you require a password reset etc.
 '@
         'NoBirthdate' = @'
+Email body to student:
+
 According to our records there are outstanding issues with your registration.
 
 A birthdate is not recorded in our systems.
@@ -396,15 +402,17 @@ If you are still have difficulties with your account following that, please cont
 For 2020 academic year, AD user accounts are created for part-time students who are 'EL' registered.                
 '@
         'ProgrammeCodeNotInFIM' = @'
-Email to IT Services: The programme code associated with this student is not registered in FIM. Please add the following programme code to the SQL lookup table in FIM.
+Email body to IT Services: 
+    The programme code associated with this student is not registered in FIM. Please add the following programme code to the SQL lookup table in FIM.
 '@
         'Duplicate account (comp)' = @'
 There is a duplicate AD account in another domain.
 Once this duplicate account is deleted a new account will be created automatically in the Computing domain.
 The Office365 GUID attached to the duplicate AD account will need to be noted and set in the newly created account ('mS-DS-ConsistencyGuid' field).
-Use 'Set-ADuser -Identity -Guid'.
-Email itsupport.tallaght@tudublin.ie or ElecTechSupport.Tallaght@TUDublin.ie: 
+Use 'Set-ADuser -Identity -Guid' for this purpose.
+Email: itsupport.tallaght@tudublin.ie or ElecTechSupport.Tallaght@TUDublin.ie: 
 
+Email body:
      I would be grateful if you would delete an old duplicate account in your domain.
      We have noted and will attach the existing Office365 GUID to the new AD account in the Computing domain.
      The student details are: 
@@ -412,9 +420,10 @@ Email itsupport.tallaght@tudublin.ie or ElecTechSupport.Tallaght@TUDublin.ie:
         'Duplicate account' = @'
 There is a duplicate AD account in another domain.
 The Office365 GUID attached to the duplicate AD account will need to be noted and set in the newly created account ('mS-DS-ConsistencyGuid' field).
-Use 'Set-ADuser -Identity -Guid'.
+Use 'Set-ADuser -Identity -Guid' for this purpose.
 Email: itsupport.tallaght@tudublin.ie or ElecTechSupport.Tallaght@TUDublin.ie: 
 
+Email body:
      I would be grateful if you would delete an old duplicate account in your domain.
      We have noted and will attach the existing Office365 GUID to the new AD account in the local domain.
      The student details are: 
@@ -423,7 +432,7 @@ Email: itsupport.tallaght@tudublin.ie or ElecTechSupport.Tallaght@TUDublin.ie:
 This student is registered for exam purposes only but may have discretionary logon access.
 Please check 'valid domain user definition' to see when this discretionary access expires.
 
-Email to student: 
+Email body to student: 
 
      You are currently registered for exams only and do not have logon access.
      If you believe this is incorrect, please contact the Registrars/Part-Time/Finance office for further assistance.
