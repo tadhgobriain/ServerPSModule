@@ -398,15 +398,26 @@ For 2020 academic year, AD user accounts are created for part-time students who 
         'ProgrammeCodeNotInFIM' = @'
 Email to IT Services: The programme code associated with this student is not registered in FIM. Please add the following programme code to the SQL lookup table in FIM.
 '@
-        'Duplicate account' = @'
+        'Duplicate account (comp)' = @'
 There is a duplicate AD account in another domain.
 Once this duplicate account is deleted a new account will be created automatically in the Computing domain.
-The email GUID attached to the duplicate AD account will need to be noted and set in the newly created account ('mS-DS-ConsistencyGuid' field).
+The Office365 GUID attached to the duplicate AD account will need to be noted and set in the newly created account ('mS-DS-ConsistencyGuid' field).
+Use 'Set-ADuser -Identity -Guid'.
 Email itsupport.tallaght@tudublin.ie or ElecTechSupport.Tallaght@TUDublin.ie: 
 
      I would be grateful if you would delete an old duplicate account in your domain.
-     Please provide us with any email GUID to attach to a new AD account in the Computing domain.
-     The student details are
+     We have noted and will attach the existing Office365 GUID to the new AD account in the Computing domain.
+     The student details are: 
+'@
+        'Duplicate account' = @'
+There is a duplicate AD account in another domain.
+The Office365 GUID attached to the duplicate AD account will need to be noted and set in the newly created account ('mS-DS-ConsistencyGuid' field).
+Use 'Set-ADuser -Identity -Guid'.
+Email: itsupport.tallaght@tudublin.ie or ElecTechSupport.Tallaght@TUDublin.ie: 
+
+     I would be grateful if you would delete an old duplicate account in your domain.
+     We have noted and will attach the existing Office365 GUID to the new AD account in the local domain.
+     The student details are: 
 '@
         'RX account' = @'
 This student is registered for exam purposes only but may have discretionary logon access.
@@ -474,20 +485,29 @@ Process {
             $DC = $DC + 1
         } While (($Null -eq $ADUser) -and ($DC -le ($SearchDCs.Count)-1))
 
-        If ( $Null -eq $ADuser ) { 'User account not created yet'}
-        ElseIf ($ADUser) { 
+        # Establish correct domain based on programme code
             # EngProgCodes: 'TA_E*','FS_C*', not 'TA_ERA*'
             # CompProgCodes: 'TA_S*','TA_K*','FS_S*'
             # StuProgCodes: 'TA_A*','TA_B*','TA_H*','TA_ERA*' 
             If (($TUDUser.Programme -like 'TA_E*') -or ($TUDUser.Programme -like 'FS_C*') -and ($TUDUser.Programme -notlike 'TA_ERA*')) {
                 $TUDUser.'Correct Domain' = 'Eng'
             } 
-            If ($TUDUser.Programme -like 'TA_S*' -or $TUDUser.Programme -like 'TA_K*') {
+            If ($TUDUser.Programme -like 'TA_S*' -or $TUDUser.Programme -like 'TA_K*' -or $TUDUser.Programme -like 'FS_S*') {
                 $TUDUser.'Correct Domain' = 'Computing'
             }
             If (($TUDUser.Programme -like 'TA_A*') -or ($TUDUser.Programme -like 'TA_B*') -or ($TUDUser.Programme -like 'TA_H*') -or ($TUDUser.Programme -like 'TA_ERA*')) {
                 $TUDUser.'Correct Domain' = 'Stu'
-            }     
+            }
+
+        If ( ($Null -eq $ADuser) -and ($TUDUser.'Correct Domain' -ne 'Computing') ) { 'User account not created yet' }
+        Else { 
+                'User account not created yet as existing AD account in another domain'
+                $TUDUser.Action = $ActionType.Get_Item('Duplicate Account (comp)') 
+            }
+        
+        If ($ADUser) { 
+            # Check for AD account in another domain
+            If ( $TUDUser.'Correct Domain' -ne $SearchDCs[$DC-1].Split('.')[1] ) { $TUDUser.Action = $ActionType.Get_Item('Duplicate Account') }     
 
             
             $TUDUser.ADAccount = $SearchDCs[$DC-1].Split('.')[1] + '\' + $ADUser.SamAccountName
