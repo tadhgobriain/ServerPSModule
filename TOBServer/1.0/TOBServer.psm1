@@ -313,7 +313,9 @@ Begin {
         Add-Type -Path "$env:ProgramFiles\PackageManagement\NuGet\Packages\Oracle.ManagedDataAccess.$($(Get-Package -Name Oracle.ManagedDataAccess).Version)\lib\net40\Oracle.ManagedDataAccess.dll"  
     }
 
-    $SearchDCs = @('compdc1.computing.stu.it-tallaght.ie','studc1.stu.it-tallaght.ie','engdc1.eng.stu.it-tallaght.ie')
+    # $SearchDCs = @('compdc1.computing.stu.it-tallaght.ie','studc1.stu.it-tallaght.ie','engdc1.eng.stu.it-tallaght.ie')
+    $GCName = (Get-ADDomainController -Discover -Service 'GlobalCatalog').HostName
+    $TargetGC = "$GCName" + ":3268"
 
     $TextInfo = (Get-Culture).TextInfo
 
@@ -475,33 +477,8 @@ Process {
             If ($RegUser.PROGRAMME -eq 'TA_HHUMN_ERB' -or ($RegUser.Programme).Substring(3,3) -eq 'ERA') {
                 $TUDUser.Programme = $RegUser.PROGRAMME + ' (Erasmus)' }
             Else { $TUDUser.Programme = $RegUser.PROGRAMME }
-            
-            $TUDUser.RegCode = $RegUser.REGCODE
-            $TUDUser.'Account Action' = $RegUser.ACCOUNT_ACTION
-            $TUDUser.Term = $RegUser.TERM
-            $TUDUser.'Last Update (CORE)' = $RegUser.LAST_UPDATE
 
-            If ($TUDUser.'Account Action' -eq 'DISABLE') { $TUDUser.Action = $ActionType.Get_Item('AccountDisabled') }
-            If (!$TUDUser.Password -and $TUDUser.ID ) { $TUDUser.Action = $ActionType.Get_Item('NoBirthdate') }
-            
-            If ($TUDUser.REGCODE -eq 'RX' ) { $TUDUser.Action = $ActionType.Get_Item('RX account') }
-
-            #If (!$TUDUser.Action) { $TUDUser.Action = $ActionType.Get_Item('NoAction') }
-        }
-        Else { 
-            $TUDUser.Action = $ActionType.Get_Item('NotRegistered') 
-        }
-
-        # Search all student domains till we find the AD user account (assume no duplicates!)
-        $DC = 0
-        Do {
-            $ADUser = Get-ADUser -Filter "SamAccountName -Like '$ID'" -Properties Company,Office,EmailAddress,ExtensionAttribute2,ExtensionAttribute15,ProxyAddresses,LastLogonDate,PasswordExpired,MemberOf,mS-DS-ConsistencyGuid -Server $SearchDCs[$DC]
-            $DC = $DC + 1
-        } While (($Null -eq $ADUser) -and ($DC -le ($SearchDCs.Count)-1))
-
-        $CurrentDomain = $SearchDCs[$DC-1].Split('.')[1]
-
-        # Establish correct domain based on programme code
+            # Establish correct domain based on programme code
             # EngProgCodes: 'TA_E*','FS_C*', not 'TA_ERA*'
             # CompProgCodes: 'TA_S*','TA_K*','FS_S*'
             # StuProgCodes: 'TA_A*','TA_B*','TA_H*','TA_ERA*' 
@@ -515,16 +492,43 @@ Process {
                 $TUDUser.'Correct Domain' = 'Stu'
             }
 
-        If ( ($Null -eq $ADuser) -and ($TUDUser.'Correct Domain' -eq $CurrentDomain) ) { $TUDUser.Action = $ActionType.Get_Item('ADAccountNotCreatedYet')  }
-        ElseIf ( ($Null -eq $ADuser) -and ($TUDUser.'Correct Domain' -ne $CurrentDomain ) ) { $TUDUser.Action = $ActionType.Get_Item('Duplicate Account (comp)')  }
+            
+            $TUDUser.RegCode = $RegUser.REGCODE
+            $TUDUser.'Account Action' = $RegUser.ACCOUNT_ACTION
+            $TUDUser.Term = $RegUser.TERM
+            $TUDUser.'Last Update (CORE)' = $RegUser.LAST_UPDATE
 
+            If ($TUDUser.'Account Action' -eq 'DISABLE') { $TUDUser.Action = $ActionType.Get_Item('AccountDisabled') }
+            If (!$TUDUser.Password -and $TUDUser.ID ) { $TUDUser.Action = $ActionType.Get_Item('NoBirthdate') }
+            
+            If ($TUDUser.REGCODE -eq 'RX' ) { $TUDUser.Action = $ActionType.Get_Item('RX account') }
+        }
+        Else { 
+            $TUDUser.Action = $ActionType.Get_Item('NotRegistered') 
+        }
+        
+        <#$DC = 0
+        Do {
+            $ADUser = Get-ADUser -Filter "SamAccountName -Like '$ID'" -Properties Company,Office,EmailAddress,ExtensionAttribute2,ExtensionAttribute15,ProxyAddresses,LastLogonDate,PasswordExpired,MemberOf,mS-DS-ConsistencyGuid -Server $SearchDCs[$DC]
+            $DC = $DC + 1
+        } While (($Null -eq $ADUser) -and ($DC -le ($SearchDCs.Count)-1))
+        #>
+        #$CurrentDomain = $SearchDCs[$DC-1].Split('.')[1]
+        
+
+        # Search global catalogue for the AD user account(s)
+        $ADUser = Get-ADUser -Filter "SamAccountName -Like '$ID'" -Properties Company,Office,EmailAddress,ExtensionAttribute2,ExtensionAttribute15,ProxyAddresses,LastLogonDate,PasswordExpired,MemberOf,mS-DS-ConsistencyGuid -Server $TargetGC
+        $DN = $ADUser.DistinguishedName
+        $CurrentDomain = ($DN.Substring($dn.IndexOf("DC=")).split(',') | select -First 1).split('=')[-1]
+
+        If ( ($Null -eq $ADuser) -and $RegUser ) { $TUDUser.Action = $ActionType.Get_Item('ADAccountNotCreatedYet')  }
 
         If ($ADUser) { 
             # Check for AD account in another domain
-            If ( $TUDUser.'Correct Domain' -ne $CurrentDomain ) { $TUDUser.Action = $ActionType.Get_Item('Duplicate Account') }     
-
+            If ( $RegUser -and ($TUDUser.'Correct Domain' -eq 'Computing') -and ($TUDUser.'Correct Domain' -ne $CurrentDomain)) { $TUDUser.Action = $ActionType.Get_Item('Duplicate Account (comp)')  }
+            ElseIf ( $Reguser -and ($TUDUser.'Correct Domain' -ne 'Computing') -and $TUDUser.'Correct Domain' -ne $CurrentDomain  ) { $TUDUser.Action = $ActionType.Get_Item('Duplicate Account') }
             
-            $TUDUser.ADAccount = $SearchDCs[$DC-1].Split('.')[1] + '\' + $ADUser.SamAccountName
+            $TUDUser.ADAccount = $CurrentDomain + '\' + $ADUser.SamAccountName
             $TUDUser.LastLogonDate = $ADUser.LastLogonDate
             $TUDUser.PasswordExpired = $ADUser.PasswordExpired
             If (($TUDUser.'Correct Domain' -ne 'computing') -and ($TUDUser.PROGRAMME -like 'TA_K*' -or $TUDUser.PROGRAMME -like 'TA_S*' -or $TUDUser.PROGRAMME -like 'FS_S*')){
@@ -657,18 +661,15 @@ Function Get-TUDUserLastLogon {
         Position=0,
         ValueFromPipeline=$True)]
         [ValidatePattern('^x[0-9]{8}$')]
-        [String[]]$Identity,
-
-        # Param2 help description
-        [Parameter(Mandatory=$False)]
-        [Switch]$IncludeCloudLogins
+        [String[]]$Identity
     )
      
     Begin {
         $TextInfo = (Get-Culture).TextInfo
     
-        If ($IncludeCloudLogins) { $DomainDC = Get-ADDomainController -Filter * }
-        Else { $DomainDC = Get-ADDomainController -Filter * | Where-Object Site -ne 'AzureAD' } 
+        # Users only authenticate against local site DCs for AD.
+        # For Office365, wireless, Moodle (more to come), users authenticate using SSO against AAD (a different forest).
+        $DomainDC = Get-ADDomainController -Filter * | Where-Object Site -ne 'AzureAD'  
     
         # Create result table
         $UserTable = New-Object System.Data.DataTable 'Results'
