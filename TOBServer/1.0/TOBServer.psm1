@@ -447,7 +447,7 @@ Email body to student:
     }
 }
 Process {
-    Write-Output `n
+    #Write-Output `n
 
     ForEach ($Id in $Identity) {
         $Id = $TextInfo.ToTitleCase($Id)
@@ -505,25 +505,18 @@ Process {
         }
         Else { 
             $TUDUser.Action = $ActionType.Get_Item('NotRegistered') 
-        }
-        
-        <#$DC = 0
-        Do {
-            $ADUser = Get-ADUser -Filter "SamAccountName -Like '$ID'" -Properties Company,Office,EmailAddress,ExtensionAttribute2,ExtensionAttribute15,ProxyAddresses,LastLogonDate,PasswordExpired,MemberOf,mS-DS-ConsistencyGuid -Server $SearchDCs[$DC]
-            $DC = $DC + 1
-        } While (($Null -eq $ADUser) -and ($DC -le ($SearchDCs.Count)-1))
-        #>
-        #$CurrentDomain = $SearchDCs[$DC-1].Split('.')[1]
-        
+        }    
 
         # Search global catalogue for the AD user account(s)
         $ADUser = Get-ADUser -Filter "SamAccountName -Like '$ID'" -Properties Company,Office,EmailAddress,ExtensionAttribute2,ExtensionAttribute15,ProxyAddresses,LastLogonDate,PasswordExpired,MemberOf,mS-DS-ConsistencyGuid -Server $TargetGC
-        $DN = $ADUser.DistinguishedName
-        $CurrentDomain = ($DN.Substring($dn.IndexOf("DC=")).split(',') | select -First 1).split('=')[-1]
+        
 
         If ( ($Null -eq $ADuser) -and $RegUser ) { $TUDUser.Action = $ActionType.Get_Item('ADAccountNotCreatedYet')  }
 
         If ($ADUser) { 
+            $DN = $ADUser.DistinguishedName
+            $CurrentDomain = ($DN.Substring($dn.IndexOf("DC=")).split(',') | Select-Object -First 1).split('=')[-1] 
+
             # Check for AD account in another domain
             If ( $RegUser -and ($TUDUser.'Correct Domain' -eq 'Computing') -and ($TUDUser.'Correct Domain' -ne $CurrentDomain)) { $TUDUser.Action = $ActionType.Get_Item('Duplicate Account (comp)')  }
             ElseIf ( $Reguser -and ($TUDUser.'Correct Domain' -ne 'Computing') -and $TUDUser.'Correct Domain' -ne $CurrentDomain  ) { $TUDUser.Action = $ActionType.Get_Item('Duplicate Account') }
