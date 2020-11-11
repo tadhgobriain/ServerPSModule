@@ -408,7 +408,8 @@ For 2020 academic year, AD user accounts are created for part-time students who 
 '@
         'ProgrammeCodeNotInFIM' = @'
 Email body to IT Services: 
-    The programme code associated with this student is not registered in FIM. Please add the following programme code to the SQL lookup table in FIM.
+    The programme code associated with this student is not registered in FIM.
+    Please add the following programme code to the SQL lookup table in FIM.
 '@
         'Duplicate account (comp)' = @'
 There is a duplicate AD account in another domain.
@@ -508,6 +509,7 @@ Process {
         }    
 
         # Search global catalogue for the AD user account(s)
+        # mS-DS-ConsistencyGuid attribute will have to be set to replicate to GCs in the AD Schema
         $ADUser = Get-ADUser -Filter "SamAccountName -Like '$ID'" -Properties Company,Office,EmailAddress,ExtensionAttribute2,ExtensionAttribute15,ProxyAddresses,LastLogonDate,PasswordExpired,MemberOf,mS-DS-ConsistencyGuid -Server $TargetGC
         
 
@@ -540,14 +542,14 @@ Process {
             ElseIf ($Office365Licence -like '*A1*') { $Office365Licence = 'A1'}
             Else {$Office365Licence = 'No'}
             $TUDUser.'Office365 Licence' = $Office365Licence
-
+            
             If ($Null -ne ($ADUser.'mS-DS-ConsistencyGuid')) { 
                 $TUDUser.'Office365 GUID' = Convert-ByteArrayToString ($ADUser.'mS-DS-ConsistencyGuid')
             }
             Else {$TUDUser.'Office365 GUID' = 'False'}
 
-            If ($TUDUser.'Office365 Licence' -eq 'No' -and $TUDUser.'Office365 Parameters' -and $TUDUser.'Office365 GUID' -eq 'True' -and $TUDUser.'Current Domain' -eq 'computing') { 
-                $TUDUser.Action = $ActionType.Get_Item('GroupNotInFIM') 
+            If ($TUDUser.'Office365 Licence' -eq 'No' -and $TUDUser.'Office365 Parameters' -and $TUDUser.'Office365 GUID' -and $CurrentDomain -eq 'computing') { 
+                $TUDUser.Action = $ActionType.Get_Item('ProgrammeCodeNotInFIM') 
             }
 
             $TUDUser.EmailAddress = $ADUser.EmailAddress
@@ -1021,4 +1023,4 @@ Function Convert-ByteArrayToString ($msdsGuid) {
 } # END: Function Convert-ByteArrayToString
 
 
-Export-ModuleMember -Function Export-Credential, Get-LoggedOnUser, Get-TUDUser, Get-TUDUserLastLogon, Get-UserSecurityLog, Install-ODPNetManagedDriver, Reset-NetworkAdapter, Reset-TUDUser, Set-TUDUser
+Export-ModuleMember -Function Export-Credential, Get-LoggedOnUser, Get-TUDUser, Get-TUDUserLastLogon, Get-UserSecurityLog, Install-ODPNetManagedDriver, Reset-NetworkAdapter, Reset-TUDUser, Set-TUDUser, Convert-ByteArrayToString, Convert-StringToGUID
