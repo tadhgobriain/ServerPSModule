@@ -812,10 +812,10 @@ Function Reset-TUDUser {
 
             If ($PSCmdlet.ShouldProcess($ID)){
                 $Student = Get-ADUser -Filter "SamAccountName -like '$Id'"
-                Set-ADAccountPassword -Identity $ID -NewPassword ( ConvertTo-SecureString -AsPlainText $DefaultPassword -Force) -Server $AzureDC
-                If (!$SkipChangeOnNextLogin) { $Student | Set-ADUser -ChangePasswordAtLogon $True }
+                Set-ADAccountPassword -Identity $ID -Reset -NewPassword (ConvertTo-SecureString -AsPlainText $DefaultPassword -Force) -Server $AzureDC
+                If (!$SkipChangeOnNextLogin) { $Student | Set-ADUser -ChangePasswordAtLogon $True -Server $AzureDC}
                 Else {
-                    $Student | Set-ADUser -ChangePasswordAtLogon $False
+                    $Student | Set-ADUser -ChangePasswordAtLogon $False -Server $AzureDC
                 }
             }
         }    
